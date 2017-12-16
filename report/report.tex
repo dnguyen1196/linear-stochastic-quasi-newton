@@ -1,0 +1,213 @@
+\documentclass[journal,onecolumn]{IEEEtran}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\interdisplaylinepenalty=2500
+\usepackage{algorithmic, algorithm}
+\usepackage{array}
+\setlength{\parindent}{0cm}
+\linespread{1.5}
+
+\setlength{\parskip}{1em}
+\usepackage[a4paper, total={6in, 8in}]{geometry}
+\DeclareMathOperator{\E}{\mathbb{E}}
+% Specify indent
+\newlength\myindent
+\setlength\myindent{2em}
+\newcommand\bindent{%
+	\begingroup
+	\setlength{\itemindent}{\myindent}
+	\addtolength{\algorithmicindent}{\myindent}
+}
+\newcommand\eindent{\endgroup}
+
+
+\begin{document}
+\title{Stochastic Quasi Newton methods}
+\author{Duc Nguyen}
+\maketitle
+
+\section{Abstract}
+Stochastic quasi-newton method are second order optimization method that 
+The following report will look
+
+\section{Literature reviews}
+
+\subsection{Stochastic Optimization}
+Stochastic methods have gained traction as the method of choice in solving large-scale optimization problems in machine learning and scientific computing. In stochastic optimization, we look at the following composite objective function
+\begin{equation*}
+	f(w) = \frac{1}{N}\underset{i=1}{\overset{N}{\sum}}f_i(w)
+\end{equation*}
+For the purpose of our convergence analysis, we will assume that each function $ f_i $ is strongly convex. 
+Most of the methods that are widely used in practice are variants of stochastic first order method or stochastic gradient descent. Vanilla stochastic gradient descent can be summarized as:
+\begin{algorithm}[H]
+	\caption{Stochastic Gradient Descent}
+	\begin{algorithmic}
+		\STATE For k = 1, 2, ...
+		\STATE \hspace{2em} \textbf{Randomly select} $ i_k $ between 1 and $ N $
+		\STATE \hspace{2em} Update $ w^{k+1}=w^k-\alpha^k \triangledown f_{i_k}(w^k) $
+	\end{algorithmic}
+\end{algorithm} 
+Due to the random nature of the algorithm, the convergence analysis of stochastic gradient descent shows that with a constant step size $ \alpha^k $, the algorithm converges linearly to a local neighborhood around $ x^* $ but not $ x^* $ itself. With a decreasing step-size, the algorithm converges sublinearly to $ x^* $. 
+
+\subsection{SVRG}
+Stochastic Variance Reduced Gradient builds on vanilla SGD and incorporates full gradient information to obtain a better estimates that allows linear convergence with constant step-size. The algorithm makes a tradeoff between per iteration computation cost and overall convergence rate. SVRG can be summarized as follows:
+
+\begin{algorithm}[H]
+	\caption{Stochastic  Variance Reduced Gradient Descent (SVRG)}
+	\begin{algorithmic}
+		\STATE For k = 1, 2, ...
+		\STATE \hspace{2em} Choose $ x^0 = w^k $
+		\STATE \hspace{2em} For j = 1, 2,..., m
+		\STATE \hspace{4em} Randomly choose $ i $ in $ {1,...,N} $
+		\STATE \hspace{4em} $ x^j = x^{j-1} -\alpha[\triangledown f_i(x^{j-1})-\triangledown f_i(w^k)+\triangledown f(w^k)] $
+		\STATE \hspace{2em} $ w^{k+1} = z^m $
+	\end{algorithmic}
+\end{algorithm} 
+
+In fact, most state of the art methods have been first order methods as well as their improvements and modifications. In recent years, there have been a push towards stochastic second order methods. Second methods, which make use of second order information about the objective function, can potentially yield better convergence rate than first order method.
+
+Among second order methods, Newton's method is the algorithm with the best theoretical convergence rate. However, computing the Hessian matrix in large scale problem is intractable and computing the hessian inverse vector product is another bottle neck of the algorithm. BFGS is a class of second order method invented to circumvent this expensive computation. However, it has to store a $ n\times n $ Hessian approximations which is not appropriate for problems in high dimensions. Its limited memory variant L-BFGS is often used instead thanks to its linear memory usage.
+
+\subsection{Sublinearly convergent L-BFGS}
+The following algorithm outlines the steps in a Stochastic Quasi-newton algorithm with sub-linear convergence. 
+
+\begin{algorithm}[H]
+	\caption{Sublinear convergent- SQN
+		M constraint on memory storage; 
+		b size of random subset to approximate gradient;
+		$b_H$ size of subset to approximate hessian}
+	\begin{algorithmic}
+		\STATE Initialize r = 0 (number of corrections), $ H_0 = I $
+		\STATE For k = 1, 2, ...
+		\bindent
+		\STATE Choose a random subset $ S $ of size $ b $ and compute $ \triangledown f_S(w^k) $
+		\STATE if $ r < 1 $ do a gradient descent update
+		\STATE else 
+		\STATE \hspace{2em}$ w^{k+1} = w^k - \alpha^k H_r \triangledown f_S(x) $
+		
+		\STATE if $ mod(k, L) == 0 $
+		\STATE \hspace{2em} Compute $ \bar{w}_r = \frac{1}{L}\sum_{i=k-L+1}^{k} w^i $
+		\STATE \hspace{2em} If $ r > 1 $
+		\STATE \hspace{4em} Choose random subset of size $ b_H $ to compute $ \triangledown^2 f_{S_H}(\bar{w}_r)$
+		\STATE \hspace{4em} $ s_r = \bar{w}_r - \bar{w}_{r-1} $
+		\STATE \hspace{4em} $ y_r = \triangledown f_{S_H}(\bar{w}_r) s_r $
+		\STATE \hspace{4em} Compute limited memory $ H_r $ 
+		\eindent
+	\end{algorithmic}
+\end{algorithm}
+
+\subsection{SVRG-L-BFGS}
+The following algorithm outlines the steps in a linearly convergent stochastic quasi newton that builds on the idea of SVRG. Note that this algorithm looks very similar to the stochastic quasi-newton algorithm outlined above. However, the main difference is the inclusion of the SVRG step that computes the variance reduced gradient instead of the simple average stochastic gradient in the sublinearly convergent L-BFGS. We will see in convergence analysis that this allows the algorithm to have linear convergence rate with a constant step size while keeping the same computational complexity per iteration as the sublinearly stochastic quasi-newton method outlined in the previous subsection.
+
+\begin{algorithm}[H]
+	\caption{linearly convergent SQN
+		M constraint on memory storage; 
+		b size of random subset to approximate gradient;
+		$b_H$ size of subset to approximate hessian; $ \eta $ constant step size}
+	\begin{algorithmic}
+		\STATE Initialize r = 0 (number of corrections), $ H_0 = I $
+		\STATE For k = 1, 2, ...
+		\bindent
+		\STATE Compute full gradient  $ \mu_k = \triangledown f(w_k) $
+		\STATE Set $ x_0 = w_k $
+		\STATE For t = 0, ... , m-1
+		\STATE \hspace{2em} Choose a random subset $ S $ of size $ b $ and compute $ \triangledown f_S(x_t) $
+		\STATE \hspace{2em} Compute reduced variance gradient $ v_t = \triangledown f_S(x_t)-\triangledown f_S(w_k)+\mu_k $
+		\STATE \hspace{2em} Update $ x_{t+1} = x_t-\eta H_t v_t $
+		\STATE \hspace{2em} if $ \mod(t, L) == 0 $
+		\STATE \hspace{4em} r++
+		\STATE \hspace{4em} $ \bar{x}_r = \frac{1}{L} \sum_{i=t-L+1}^{t}x_i $
+		\STATE \hspace{4em} Choose random subset of size $ b_H $ to compute $ \triangledown^2 f_{S_H}(\bar{x}_r)$
+		\STATE \hspace{4em} $ s_r = \bar{x}_r - \bar{x}_{r-1} $
+		\STATE \hspace{4em} $ y_r = \triangledown f_{S_H}(\bar{x}_r) s_r $
+		\STATE \hspace{4em} Compute limited memory $ H_r $ 	
+		\STATE Choose $ w^{k+1} = x_{m-1} $
+		\eindent
+	\end{algorithmic}
+\end{algorithm}
+
+\section{Convergence Analysis}
+In this section, we will look at the convergence analysis of the two algorithms and see the improvements made introduced by SVRG. 
+
+\subsection{Sublinearly convergent L-BFGS}
+The analysis for the sublinearly convergent L-BFGS assumes that each function $ f_i $ is convex but doesn't have to be strongly convex. s
+
+\subsection{Linearly convergent L-BFGS}
+The following subsection explores the main assumptions and results in the convergence analysis of linearly convergent L-BFGS. Please refer to the appendix for full proofs.
+
+\textbf{Assumption 1.} The function $ f_i $ is convex and twice continuously differentiable for all i. $ f $ can be made strongly convex by adding a regularizer. Hence, the analysis assumes that $ f $ is strongly convex
+
+\textbf{Assumption 2.} There exist positive constants $ \lambda $ and $ \Lambda $ such that $ \lambda I \leq \triangledown^2f_{S}(w) \leq \Lambda I$ for all i.
+
+From these assumptions, we can derive the following lemmas:
+
+\textbf{Lemma 1.} Given $ B_r = H_r^{-1} $, then for some constants d and M, the following holds:
+\begin{equation*}\begin{split}
+	tr(B_r) &\leq (d+M)\Lambda\\
+	det(B_r) &\geq \frac{\lambda^{d+M}}{((d+M)\Lambda)^M}
+\end{split}
+\end{equation*}
+
+\textbf{Lemma 2.} There exists constants $ 0 < \gamma < \Gamma $ such that $ \gamma I \preceq H_r \preceq \Gamma I $
+
+where 
+\begin{equation*}
+	\gamma =  \frac{1}{(d+M)\Lambda}
+	 \hspace{2em}\Gamma = \frac{((d+M)\Lambda)^{d+M-1}}{\lambda^{d+M}}\\
+\end{equation*}
+
+\textbf{Lemma 3.} $ \rVert \triangledown f(x) \rVert^2 \geq 2\lambda (f(x)-f(w^*) $. This follows naturally from the strong convexity assumption on f.
+
+\textbf{Lemma 4. } With $ v_t = \triangledown f_S(x_t)-\triangledown f_S(w_k)+\triangledown f(w_k) $, then:
+\begin{equation*}
+	E_{k,t}[\rVert v_t \rVert^2] \leq 4\Lambda(f(x_t)-f(w^*)+f(w_k)-f(w^*))
+\end{equation*}
+
+\textbf{Conclusion } from these lemmas and assumptions, the main result is:
+\begin{equation*}
+	\E [f(w)-f(w^*)] \leq C^k \E [f(w_0)-f(w^*)]
+\end{equation*} 
+where the convergence rate $ C $ is given as
+\begin{equation*}
+	\frac{1/(2m\eta)+\eta \Gamma \Lambda^2}{\gamma \lambda - \eta \Gamma^2\Lambda^2} < 1
+\end{equation*}
+
+\section{Numerical Experiments}
+For our experiments we look at the following composite objective function:
+\begin{equation*}
+F(w) = \frac{1}{N}\underset{i=1}{\overset{N}{\sum}}\frac{1}{2}w^TA_iw-b_i^Tw
+\end{equation*}
+where $ A_i $ is a symmetric and positive definite matrix. The codes to generate the objective function were included and modifiable with different choices of $ N $ and $ n $. Hence, this is a strongly convex objective function and all sub functions are also strongly convex.
+
+\section{Results}
+
+
+\section{Discussion}
+
+
+\section{Conclusion}
+
+
+\begin{thebibliography}{}
+	\bibitem{em-svd} 
+	R. H. Byrd, S.L. Hansen, Jorge Nocedal, Y. Singer 
+	\textit{A stochastic quasi-newton method for large scale optimization}. 
+	
+	\bibitem{pmf} 
+	Philip Moritz, Robert Nishihara, Mihael I.Jordan 
+	\textit{A linearly convergent stochastic L-BFGS algorithm}
+\end{thebibliography}
+
+\section{Appendix}
+\subsection{Proof for Lemma}
+
+\subsection{Proof for Lemma}
+
+\subsection{Proof for Lemma}
+
+\subsection{Proof for Lemma}
+
+\end{document}
+
+
+

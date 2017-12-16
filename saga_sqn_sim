@@ -1,0 +1,115 @@
+import numpy as np
+import collections
+
+
+class SAGA_LBFGS(object):
+    def __init__(self, obj, M=10, L=5, b=20, bH=200, eta=0.01, w0=None):
+        self.n = obj.n # Dimension of solution
+        self.N = obj.N # Number of sub functions
+        self.b = b # Number of samples to estimate gradient
+        self.bH = bH # Number of samples to estimate hessian
+        self.eta = eta # Constant step size
+        self.obj = obj
+
+        self.M = M # Maximum number of s,y pairs stored in memory
+        self.L = L # Interval to update Hr
+        self.w0 = w0
+
+        self.eps = 1e-12
+        self.max_iters = 200
+        self.sy = collections.deque(maxlen=M) # This stores the sr yr pairs
+
+    def optimize(self):
+        if self.w0 is None:
+            w_ = [np.random.random((self.n,))] # Random starting point
+        else:
+            w_ = [self.w0]
+        f_ = [self.obj.evaluate(w_[0])] # Keep a history of the f_values
+        d_array = self.initialize_di(w_[0])
+        u_prev = np.zeros((self.n,)) # The calculations of correction pair requires this
+
+        # For k = 1, 2, ...
+        for k in range(self.max_iters):
+            # Do SAGA step
+            x_ = [w_[k]]
+
+            for d in range(20):
+                ik = np.random.choice(self.N)
+                df_ik = self.obj.compute_sub_gradient(x_[d], ik)
+                vt = (np.mean(d_array, axis=0) + df_ik - d_array[ik, :])
+                Hvt = self.compute_H_vt(vt)
+                x_next = x_[d] - self.eta*Hvt # Compute the next iterate
+                x_.append(x_next)
+
+                if d % self.L == 0 and d != 0: # Compute correction pairs
+                    # Compute ur
+                    ur = self.compute_ur(x_, self.L)
+                    # Randomly choose bH samples to estimate hessian
+                    sH = np.random.choice(self.N, self.bH)
+
+                    # Compute stochastic hessian
+                    sr = ur - u_prev
+                    stochastic_hessian = self.compute_stochastic_hessian(ur, sH)
+
+                    yr = np.dot(stochastic_hessian, sr)
+                    self.sy.append((sr, yr)) # Record the new correction pair
+                    u_prev = ur
+
+            w_next = x_[-1]
+            if np.linalg.norm(w_next - w_[k]) < self.eps:  # Stopping condition
+                break
+            w_.append(w_next)
+            f_.append(self.obj.evaluate(w_next))
+        return w_, f_
+
+    def initialize_di(self, w):
+        d_array = np.zeros((self.N, self.n))
+        for i in range(self.N):
+            d_array[i, :] = self.obj.compute_sub_gradient(w, i)
+        return d_array
+
+    def compute_ur(self, w_, k):
+        ur = np.zeros((self.n, ))
+        for i in range(max(k-self.L, 0), k+1):
+            ur += w_[i]
+        return ur/(k - max(k - self.L, 0))
+
+    def compute_stochastic_hessian(self, w, sH):
+        hess = np.zeros((self.n, self.n))
+        for i in sH:
+            hess += self.obj.compute_sub_hessian(w, i)
+        return hess/self.bH
+
+    def compute_stochastic_gradient(self, w, s):
+        grad = np.zeros_like(w)
+        for i in s:
+            grad += self.obj.compute_sub_gradient(w, i)
+        return grad/self.b
+
+    # Function returns the direct matrix product between H and vt
+    def compute_H_vt(self, vt):
+        q = vt
+        if len(self.sy) == 0: # If we don't have enough s,y pairs, use gradient descent
+            return vt
+
+        alpha = []
+        (s,y) = self.sy.pop() # Get s_k-1 and y_k-1 to compute gammak
+        self.sy.append((s,y)) # Add back because we will need it again
+        gamma = np.dot(s.T,y)/np.dot(y.T,y)
+
+        # Go in reverse
+        for (s,y) in reversed(self.sy):
+            rho = 1/np.dot(s.T, y)
+            a = rho*(np.dot(s.T, q))
+            q = q - a*y
+            alpha.append(a)
+
+        H = gamma*np.eye(self.n)
+        r = np.dot(H, q)
+        # Go forward
+        i = len(alpha)-1
+        for (s,y) in self.sy:
+            beta = rho*np.dot(y.T,r)
+            r += s*(alpha[i]-beta)
+            i -= 1
+        return r # This is Hk vt
